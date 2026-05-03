@@ -3,7 +3,7 @@
 * See LICENSE.md in the project root for license terms and full copyright notice.
 *--------------------------------------------------------------------------------------------*/
 import { Id64, Id64Array, Id64Set, Id64String } from "@itwin/core-bentley";
-import { Matrix3d } from "@itwin/core-geometry";
+import { Range3d } from "@itwin/core-geometry";
 import { ColorDef, Environment, PlanarClipMaskMode, PlanarClipMaskSettings } from "@itwin/core-common";
 import { DrawingViewState, IModelConnection, SpatialViewState, ViewState } from "@itwin/core-frontend";
 
@@ -119,12 +119,9 @@ export class ViewSetup {
 
         const modelsForDropping = await ViewSetup.getModelIds(imodel, "Geotechnical Investigation, DRWR04-GEO-00-XX-M3-G-00001.dgn, 3d");
         modelsForDropping.forEach((id) => viewState.modelSelector.dropModels(id));
-
-        // Change camera
-        viewState.setOrigin({ x: 85.69962649857428, y: -73.80364503759616, z: -82.72194576398469 });
-        viewState.setExtents({ x: 144.70409923774804, y: 150.2952419865793, z: 151.43496224165358 });
-        viewState.setRotation(Matrix3d.fromJSON([-0.8568887533689478, 0.5155013718214635, -1.178475644302565e-15, -0.18679591952287192, -0.31050028450708866, 0.9320390859672258, 0.48046742740732745, 0.7986538104655898, 0.36235775447667495]));
       }
+
+      await ViewSetup.fitViewToModelExtents(imodel, viewState);
     }
 
     const shownCategories = await ViewSetup.getShownCategories(imodel);
@@ -134,6 +131,24 @@ export class ViewSetup {
     const hiddenCategories = await ViewSetup.getHiddenCategories(imodel);
     if (hiddenCategories)
       viewState.categorySelector.dropCategories(hiddenCategories);
+  }
+
+  private static async fitViewToModelExtents(imodel: IModelConnection, viewState: SpatialViewState) {
+    const modelIds = Array.from(viewState.modelSelector.models);
+    if (modelIds.length === 0)
+      return;
+
+    const range = Range3d.createNull();
+    const modelExtents = await imodel.models.queryExtents(modelIds);
+    for (const modelExtent of modelExtents) {
+      const modelRange = Range3d.fromJSON(modelExtent.extents);
+      if (!modelRange.isNull)
+        range.extendRange(modelRange);
+    }
+
+    const fitRange = range.isNull ? viewState.computeFitRange() : range;
+    if (!fitRange.isNull)
+      viewState.lookAtVolume(fitRange, ViewSetup.getAspectRatio(), { paddingPercent: 5 });
   }
 
   /** Returns a set of every model's id in the iModel. */
