@@ -1,7 +1,7 @@
 import { PropertyRecord, PropertyValueFormat } from "@itwin/appui-abstract";
 import type { PropertyData, PropertyCategory } from "@itwin/components-react";
 import { QueryBinder, QueryRowFormat } from "@itwin/core-common";
-import type { IModelConnection } from "@itwin/core-frontend";
+import type { IModelConnection, ScreenViewport } from "@itwin/core-frontend";
 import { createSelectionScopeProps, Presentation } from "@itwin/presentation-frontend";
 import { PresentationPropertyDataProvider } from "@itwin/presentation-components";
 import { randomIfcVisualizationState } from "./RandomIfcVisualization";
@@ -14,6 +14,7 @@ const RANDOM_PROPERTY_LABEL = "Random";
 const RANDOM_CATEGORY_NAME = "__ifc_random__";
 const RANDOM_SOURCE_URL = "/api/csrng?min=0&max=100";
 const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
+const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
 type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
 interface IfcGuidClass {
@@ -125,23 +126,23 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
 export const createMechanicalEquipmentRandomPropertyDataProvider = (imodel: IModelConnection) =>
   new MechanicalEquipmentRandomPropertyDataProvider(imodel);
 
-export async function initializeMechanicalEquipmentRandomEntity(imodel: IModelConnection, viewport: unknown): Promise<void> {
-  startStartupSelection(imodel);
+export async function initializeMechanicalEquipmentRandomEntity(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
+  startStartupSelection(imodel, viewport);
   startStartupRandomRefresh();
 }
 
-function startStartupSelection(imodel: IModelConnection): void {
+function startStartupSelection(imodel: IModelConnection, viewport?: ScreenViewport): void {
   if (startupSelectionTimer !== undefined || startupSelectionComplete) {
     return;
   }
 
-  void selectStartupElement(imodel);
+  void selectStartupElement(imodel, viewport);
   startupSelectionTimer = window.setInterval(() => {
-    void selectStartupElement(imodel);
+    void selectStartupElement(imodel, viewport);
   }, 5000);
 }
 
-async function selectStartupElement(imodel: IModelConnection): Promise<void> {
+async function selectStartupElement(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
   if (startupSelectionInFlight || imodel.isClosed || startupSelectionComplete) {
     stopStartupSelection();
     return;
@@ -150,15 +151,27 @@ async function selectStartupElement(imodel: IModelConnection): Promise<void> {
   startupSelectionInFlight = true;
   try {
     const elementIds = await queryElementIdsByIfcGuid(imodel, TARGET_IFC_GUID);
-    if (elementIds.length > 0) {
-      imodel.selectionSet.add(elementIds);
-      randomIfcVisualizationState.setElementIds(elementIds);
+    const idsToSelect = elementIds.length > 0 ? elementIds : [TARGET_ELEMENT_ID64];
+    if (idsToSelect.length > 0) {
+      imodel.selectionSet.add(idsToSelect);
+      randomIfcVisualizationState.setElementIds(idsToSelect);
+      if (viewport !== undefined) {
+        try {
+          await viewport.zoomToElements(idsToSelect, {
+            animateFrustumChange: true,
+            paddingPercent: 0.35,
+            minimumDimension: 2,
+          });
+        } catch (error) {
+          console.warn(`Unable to zoom to IFCGUID ${TARGET_IFC_GUID}.`, error);
+        }
+      }
 
       try {
         await Presentation.selection.replaceSelectionWithScope(
           "Startup IFCGUID selection",
           imodel,
-          elementIds,
+          idsToSelect,
           createSelectionScopeProps(Presentation.selection.scopes.activeScope),
         );
       } catch (error) {
