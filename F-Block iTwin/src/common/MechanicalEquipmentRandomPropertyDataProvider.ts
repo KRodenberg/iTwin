@@ -1,6 +1,8 @@
 import { PropertyRecord, PropertyValueFormat } from "@itwin/appui-abstract";
 import type { PropertyData, PropertyCategory } from "@itwin/components-react";
-import type { IModelConnection } from "@itwin/core-frontend";
+import { QueryBinder, QueryRowFormat } from "@itwin/core-common";
+import type { IModelConnection, ScreenViewport } from "@itwin/core-frontend";
+import { createSelectionScopeProps, Presentation } from "@itwin/presentation-frontend";
 import { PresentationPropertyDataProvider } from "@itwin/presentation-components";
 import { randomIfcVisualizationState } from "./RandomIfcVisualization";
 
@@ -11,8 +13,20 @@ const RANDOM_PROPERTY_NAME = "Random";
 const RANDOM_PROPERTY_LABEL = "Random";
 const RANDOM_CATEGORY_NAME = "__ifc_random__";
 const RANDOM_SOURCE_URL = "/api/csrng?min=0&max=100";
+const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
+const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
 type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
+interface IfcGuidClass {
+  schemaName: string;
+  className: string;
+  propertyName: string;
+}
+
+let startupSelectionTimer: number | undefined;
+let startupSelectionInFlight = false;
+let startupSelectionComplete = false;
+let startupRandomRefreshTimer: number | undefined;
 
 export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationPropertyDataProvider {
   private _randomValue = "Loading...";
@@ -47,14 +61,8 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
 
   private async refreshRandomValue() {
     try {
-      const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`Random API request failed with ${response.status}`);
-      }
-
-      const payload = (await response.json()) as RandomApiResponse;
-      const nextValue = Array.isArray(payload) ? payload[0]?.random : payload.random;
-      if (typeof nextValue !== "number" || this._disposed) {
+      const nextValue = await fetchRandomValue();
+      if (this._disposed) {
         return;
       }
 
@@ -117,6 +125,267 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
 
 export const createMechanicalEquipmentRandomPropertyDataProvider = (imodel: IModelConnection) =>
   new MechanicalEquipmentRandomPropertyDataProvider(imodel);
+
+export async function initializeMechanicalEquipmentRandomEntity(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
+  startStartupSelection(imodel, viewport);
+  startStartupRandomRefresh();
+}
+
+function startStartupSelection(imodel: IModelConnection, viewport?: ScreenViewport): void {
+  if (startupSelectionTimer !== undefined || startupSelectionComplete) {
+    return;
+  }
+
+  void selectStartupElement(imodel, viewport);
+  startupSelectionTimer = window.setInterval(() => {
+    void selectStartupElement(imodel, viewport);
+  }, 5000);
+}
+
+async function selectStartupElement(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
+  if (startupSelectionInFlight || imodel.isClosed || startupSelectionComplete) {
+    stopStartupSelection();
+    return;
+  }
+
+  startupSelectionInFlight = true;
+  try {
+    const elementIds = await queryElementIdsByIfcGuid(imodel, TARGET_IFC_GUID);
+    const idsToSelect = elementIds.length > 0 ? elementIds : [TARGET_ELEMENT_ID64];
+    if (idsToSelect.length > 0) {
+      imodel.selectionSet.add(idsToSelect);
+      randomIfcVisualizationState.setElementIds(idsToSelect);
+      if (viewport !== undefined) {
+        try {
+          await viewport.zoomToElements(idsToSelect, {
+            animateFrustumChange: true,
+            paddingPercent: 0.35,
+            minimumDimension: 2,
+          });
+        } catch (error) {
+          console.warn(`Unable to zoom to IFCGUID ${TARGET_IFC_GUID}.`, error);
+        }
+      }
+
+      try {
+        await Presentation.selection.replaceSelectionWithScope(
+          "Startup IFCGUID selection",
+          imodel,
+          idsToSelect,
+          createSelectionScopeProps(Presentation.selection.scopes.activeScope),
+        );
+      } catch (error) {
+        console.warn(`Unable to update presentation selection for IFCGUID ${TARGET_IFC_GUID}.`, error);
+        return;
+      }
+
+      startupSelectionComplete = true;
+      stopStartupSelection();
+    }
+  } catch (error) {
+    console.warn(`Unable to locate IFCGUID ${TARGET_IFC_GUID} on startup.`, error);
+  } finally {
+    startupSelectionInFlight = false;
+  }
+}
+
+function stopStartupSelection(): void {
+  if (startupSelectionTimer === undefined) {
+    return;
+  }
+
+  window.clearInterval(startupSelectionTimer);
+  startupSelectionTimer = undefined;
+}
+
+function startStartupRandomRefresh(): void {
+  if (startupRandomRefreshTimer !== undefined) {
+    return;
+  }
+
+  void refreshStartupRandomValue();
+  startupRandomRefreshTimer = window.setInterval(() => {
+    void refreshStartupRandomValue();
+  }, 1000);
+}
+
+async function refreshStartupRandomValue(): Promise<void> {
+  try {
+    randomIfcVisualizationState.setRandomValue(await fetchRandomValue());
+  } catch (error) {
+    console.warn("Unable to fetch startup random value.", error);
+  }
+}
+
+async function fetchRandomValue(): Promise<number> {
+  const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Random API request failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as RandomApiResponse;
+  const nextValue = Array.isArray(payload) ? payload[0]?.random : payload.random;
+  if (typeof nextValue !== "number") {
+    throw new Error("Random API response did not include a numeric random value");
+  }
+
+  return nextValue;
+}
+
+async function queryElementIdsByIfcGuid(imodel: IModelConnection, ifcGuid: string): Promise<string[]> {
+  if (imodel.isClosed) {
+    return [];
+  }
+
+  const elementIdsFromExternalSourceAspect = await queryExternalSourceAspectElementIdsByIfcGuid(imodel, ifcGuid);
+  if (elementIdsFromExternalSourceAspect.length > 0) {
+    return elementIdsFromExternalSourceAspect;
+  }
+
+  const elementIdsFromElement = await queryClassElementIdsByIfcGuid(
+    imodel,
+    "BisCore",
+    "Element",
+    TARGET_IFC_GUID_PROPERTY_QUERY_NAME,
+    ifcGuid,
+  );
+  if (elementIdsFromElement.length > 0) {
+    return elementIdsFromElement;
+  }
+
+  const classes = await queryClassesWithIfcGuidProperty(imodel);
+  for (const { schemaName, className, propertyName } of classes) {
+    const elementIds = await queryClassElementIdsByIfcGuid(imodel, schemaName, className, propertyName, ifcGuid);
+    if (elementIds.length > 0) {
+      return elementIds;
+    }
+  }
+
+  return [];
+}
+
+async function queryExternalSourceAspectElementIdsByIfcGuid(imodel: IModelConnection, ifcGuid: string): Promise<string[]> {
+  const elementIds: string[] = [];
+  const query = `
+    SELECT Element.Id id
+    FROM BisCore.ExternalSourceAspect
+    WHERE Identifier = :ifcGuid
+  `;
+  let reader;
+  try {
+    reader = imodel.createQueryReader(
+      query,
+      QueryBinder.from({ ifcGuid }),
+      { rowFormat: QueryRowFormat.UseJsPropertyNames },
+    );
+  } catch {
+    return [];
+  }
+
+  try {
+    for await (const row of reader) {
+      const elementId = getQueryId(row.id);
+      if (elementId !== undefined) {
+        elementIds.push(elementId);
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  return elementIds.length === 1 ? elementIds : [];
+}
+
+async function queryClassesWithIfcGuidProperty(imodel: IModelConnection): Promise<IfcGuidClass[]> {
+  const classes: IfcGuidClass[] = [];
+  const query = `
+    SELECT s.Name schemaName, c.Name className, p.Name propertyName
+    FROM meta.ECPropertyDef p
+    JOIN meta.ECClassDef c ON p.Class.Id = c.ECInstanceId
+    JOIN meta.ECSchemaDef s ON c.Schema.Id = s.ECInstanceId
+    WHERE UPPER(p.Name) = :propertyName
+  `;
+  const reader = imodel.createQueryReader(
+    query,
+    QueryBinder.from({ propertyName: TARGET_IFC_GUID_PROPERTY_QUERY_NAME }),
+    { rowFormat: QueryRowFormat.UseJsPropertyNames },
+  );
+
+  for await (const row of reader) {
+    if (
+      typeof row.schemaName === "string" &&
+      typeof row.className === "string" &&
+      typeof row.propertyName === "string"
+    ) {
+      classes.push({
+        schemaName: row.schemaName,
+        className: row.className,
+        propertyName: row.propertyName,
+      });
+    }
+  }
+
+  return classes;
+}
+
+async function queryClassElementIdsByIfcGuid(
+  imodel: IModelConnection,
+  schemaName: string,
+  className: string,
+  propertyName: string,
+  ifcGuid: string,
+): Promise<string[]> {
+  if (!isValidECSqlIdentifier(schemaName) || !isValidECSqlIdentifier(className) || !isValidECSqlIdentifier(propertyName)) {
+    return [];
+  }
+
+  const elementIds: string[] = [];
+  const query = `
+    SELECT ECInstanceId id
+    FROM ${schemaName}.${className}
+    WHERE ${propertyName} = :ifcGuid
+  `;
+  let reader;
+  try {
+    reader = imodel.createQueryReader(
+      query,
+      QueryBinder.from({ ifcGuid }),
+      { rowFormat: QueryRowFormat.UseJsPropertyNames },
+    );
+  } catch {
+    return [];
+  }
+
+  try {
+    for await (const row of reader) {
+      const elementId = getQueryId(row.id);
+      if (elementId !== undefined) {
+        elementIds.push(elementId);
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  return elementIds.length === 1 ? elementIds : [];
+}
+
+function isValidECSqlIdentifier(value: string): boolean {
+  return /^[A-Za-z_]\w*$/.test(value);
+}
+
+function getQueryId(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" ? id : undefined;
+  }
+
+  return undefined;
+}
 
 function collectIfcCategoryNames(categories: PropertyCategory[]): Set<string> {
   const matchingCategoryNames = new Set<string>();
