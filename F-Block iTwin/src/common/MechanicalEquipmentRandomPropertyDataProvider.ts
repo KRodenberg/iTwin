@@ -14,7 +14,7 @@ const RANDOM_PROPERTY_LABEL = "Random";
 const RANDOM_CATEGORY_NAME = "__ifc_random__";
 const RANDOM_SOURCE_URL = "/api/csrng?min=0&max=100";
 const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
-const TARGET_ELEMENT_ID64 = "0x20000000a76";
+export const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
 type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
 interface IfcGuidClass {

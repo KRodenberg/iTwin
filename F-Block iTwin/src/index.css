@@ -5,3 +5,39 @@ html, body, #root {
   margin: 0;
   padding: 0;
 }
+
+.ifc-id64-overlay {
+  position: fixed;
+  left: 12px;
+  bottom: calc(12px + 2vh);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 7px 10px;
+  color: #f4f7fb;
+  background: rgba(25, 31, 38, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.3;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.ifc-id64-overlay__label {
+  color: #b9c4d0;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ifc-id64-overlay__value {
+  overflow: hidden;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

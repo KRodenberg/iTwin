@@ -1,3 +1,10 @@
+
+# How to run TLDR:
+
+In the project directory, you can run:
+
+### `npm start`
+
 # Getting Started with the iTwin Viewer Create React App Template
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
