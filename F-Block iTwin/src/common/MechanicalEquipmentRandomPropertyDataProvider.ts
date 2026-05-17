@@ -1,11 +1,11 @@
 import { PropertyRecord, PropertyValueFormat } from "@itwin/appui-abstract";
 import type { PropertyData, PropertyCategory } from "@itwin/components-react";
-import { BeEvent } from "@itwin/core-bentley";
 import { QueryBinder, QueryRowFormat } from "@itwin/core-common";
 import type { IModelConnection, ScreenViewport } from "@itwin/core-frontend";
 import { createSelectionScopeProps, Presentation } from "@itwin/presentation-frontend";
 import { PresentationPropertyDataProvider } from "@itwin/presentation-components";
 import { randomIfcVisualizationState } from "./RandomIfcVisualization";
+import { getErrorMessage, getMeasurementNow, randomValueQueryLogState } from "./RandomValueQueryLog";
 
 const TARGET_IFC_GUID = "0GYqmJBIb6LPFuePZ9lxOc";
 const IFC_CATEGORY_LABEL = "IFC";
@@ -18,9 +18,9 @@ const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
 export const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
 type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
-export interface RandomValueQueryLogEntry {
-  id: number;
-  queriedAtUtc: string;
+interface RandomValueResponse {
+  value: number;
+  queryLogId: number;
 }
 
 interface IfcGuidClass {
@@ -29,31 +29,6 @@ interface IfcGuidClass {
   propertyName: string;
 }
 
-class RandomValueQueryLogState {
-  private _entries: RandomValueQueryLogEntry[] = [];
-  private _nextId = 1;
-
-  public readonly onChanged = new BeEvent<() => void>();
-
-  public get entries(): RandomValueQueryLogEntry[] {
-    return this._entries;
-  }
-
-  public addEntry(queriedAtUtc: string): void {
-    this._entries = [
-      {
-        id: this._nextId,
-        queriedAtUtc,
-      },
-      ...this._entries,
-    ].slice(0, 10000);
-    this._nextId += 1;
-    this.onChanged.raiseEvent();
-  }
-}
-
-export const randomValueQueryLogState = new RandomValueQueryLogState();
-
 let startupSelectionTimer: number | undefined;
 let startupSelectionInFlight = false;
 let startupSelectionComplete = false;
@@ -61,25 +36,25 @@ let startupRandomRefreshTimer: number | undefined;
 
 export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationPropertyDataProvider {
   private _randomValue = "Loading...";
-  private _refreshTimer?: number;
+  private _removeRandomValueListener?: () => void;
   private _disposed = false;
 
   public constructor(imodel: IModelConnection) {
     super({ imodel });
 
-    this._refreshTimer = window.setInterval(() => {
-      void this.refreshRandomValue();
-    }, 1000);
-
-    void this.refreshRandomValue();
+    startStartupRandomRefresh();
+    this._removeRandomValueListener = randomIfcVisualizationState.onChanged.addListener(() => {
+      this.syncRandomValue();
+    });
+    this.syncRandomValue();
   }
 
   public override dispose(): void {
     this._disposed = true;
 
-    if (this._refreshTimer !== undefined) {
-      window.clearInterval(this._refreshTimer);
-      this._refreshTimer = undefined;
+    if (this._removeRandomValueListener !== undefined) {
+      this._removeRandomValueListener();
+      this._removeRandomValueListener = undefined;
     }
 
     super.dispose();
@@ -90,24 +65,19 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
     return this.withRandomProperty(data);
   }
 
-  private async refreshRandomValue() {
-    try {
-      const nextValue = await fetchRandomValue();
-      if (this._disposed) {
-        return;
-      }
-
-      this._randomValue = String(nextValue);
-      randomIfcVisualizationState.setRandomValue(nextValue);
-      this.onDataChanged.raiseEvent();
-    } catch {
-      if (this._disposed || this._randomValue === "Unavailable") {
-        return;
-      }
-
-      this._randomValue = "Unavailable";
-      this.onDataChanged.raiseEvent();
+  private syncRandomValue(): void {
+    if (this._disposed) {
+      return;
     }
+
+    const randomValue = randomIfcVisualizationState.snapshot.randomValue;
+    const nextRandomValue = randomValue === undefined ? "Loading..." : String(randomValue);
+    if (this._randomValue === nextRandomValue) {
+      return;
+    }
+
+    this._randomValue = nextRandomValue;
+    this.onDataChanged.raiseEvent();
   }
 
   private withRandomProperty(data: PropertyData): PropertyData {
@@ -242,27 +212,39 @@ function startStartupRandomRefresh(): void {
 
 async function refreshStartupRandomValue(): Promise<void> {
   try {
-    randomIfcVisualizationState.setRandomValue(await fetchRandomValue());
+    const randomValueResponse = await fetchRandomValue();
+    randomValueQueryLogState.markValueApplied(randomValueResponse.queryLogId, getMeasurementNow());
+    randomIfcVisualizationState.setRandomValue(randomValueResponse.value, randomValueResponse.queryLogId);
   } catch (error) {
     console.warn("Unable to fetch startup random value.", error);
   }
 }
 
-async function fetchRandomValue(): Promise<number> {
-  randomValueQueryLogState.addEntry(new Date().toISOString());
+async function fetchRandomValue(): Promise<RandomValueResponse> {
+  const queryLogId = randomValueQueryLogState.addQueryStarted(new Date().toISOString(), getMeasurementNow());
 
-  const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Random API request failed with ${response.status}`);
+  try {
+    const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
+    randomValueQueryLogState.markResponseReceived(queryLogId, getMeasurementNow());
+    if (!response.ok) {
+      throw new Error(`Random API request failed with ${response.status}`);
+    }
+
+    const payload = (await response.json()) as RandomApiResponse;
+    const nextValue = Array.isArray(payload) ? payload[0]?.random : payload.random;
+    if (typeof nextValue !== "number") {
+      throw new Error("Random API response did not include a numeric random value");
+    }
+
+    randomValueQueryLogState.markValueParsed(queryLogId, getMeasurementNow(), nextValue);
+    return {
+      value: nextValue,
+      queryLogId,
+    };
+  } catch (error) {
+    randomValueQueryLogState.markFailed(queryLogId, getMeasurementNow(), getErrorMessage(error));
+    throw error;
   }
-
-  const payload = (await response.json()) as RandomApiResponse;
-  const nextValue = Array.isArray(payload) ? payload[0]?.random : payload.random;
-  if (typeof nextValue !== "number") {
-    throw new Error("Random API response did not include a numeric random value");
-  }
-
-  return nextValue;
 }
 
 async function queryElementIdsByIfcGuid(imodel: IModelConnection, ifcGuid: string): Promise<string[]> {

@@ -13,12 +13,11 @@ import { authClient } from "./common/AuthorizationClient";
 import {
   createMechanicalEquipmentRandomPropertyDataProvider,
   initializeMechanicalEquipmentRandomEntity,
-  randomValueQueryLogState,
   TARGET_ELEMENT_ID64,
-  type RandomValueQueryLogEntry,
 } from "./common/MechanicalEquipmentRandomPropertyDataProvider";
 import { mapLayerOptions } from "./common/MapLayerOptions";
-import { useRandomIfcVisualization } from "./common/RandomIfcVisualization";
+import { randomIfcVisualizationState, useRandomIfcVisualization } from "./common/RandomIfcVisualization";
+import { randomValueQueryLogState, type RandomValueQueryLogEntry } from "./common/RandomValueQueryLog";
 import { ViewSetup } from "./common/ViewSetup";
 
 const viewportOptions = {
@@ -40,10 +39,16 @@ const uiProviders = [
 const iTwinId = process.env.IMJS_ITWIN_ID;
 const iModelId = process.env.IMJS_IMODEL_ID;
 
+function getDurationLabel(startAtMs: number, endAtMs: number | undefined): string {
+  return endAtMs === undefined ? "..." : `${Math.max(0, endAtMs - startAtMs).toFixed(1)}ms`;
+}
+
 const ViewportFrontstageApp = () => {
   const [isIModelAppReady, setIsIModelAppReady] = useState(false);
   const [selectedId64, setSelectedId64] = useState(TARGET_ELEMENT_ID64);
   const [isConsoleLogOpen, setIsConsoleLogOpen] = useState(false);
+  const [isStartingEndToEndTest, setIsStartingEndToEndTest] = useState(false);
+  const [isEndToEndTesting, setIsEndToEndTesting] = useState(randomValueQueryLogState.isEndToEndTesting);
   const [queryLogEntries, setQueryLogEntries] = useState<RandomValueQueryLogEntry[]>(randomValueQueryLogState.entries);
   useRandomIfcVisualization(isIModelAppReady);
 
@@ -102,6 +107,7 @@ const ViewportFrontstageApp = () => {
   useEffect(() => {
     const syncQueryLogEntries = (): void => {
       setQueryLogEntries(randomValueQueryLogState.entries);
+      setIsEndToEndTesting(randomValueQueryLogState.isEndToEndTesting);
     };
 
     const removeQueryLogListener = randomValueQueryLogState.onChanged.addListener(syncQueryLogEntries);
@@ -122,6 +128,32 @@ const ViewportFrontstageApp = () => {
     await PropertyGridManager.initialize();
     await TreeWidget.initialize();
     setIsIModelAppReady(true);
+  }, []);
+
+  const startEndToEndTesting = useCallback(async () => {
+    const viewport = IModelApp.viewManager.selectedView ?? Array.from(IModelApp.viewManager)[0];
+    if (viewport === undefined) {
+      console.warn("Unable to start end-to-end test because no viewport is open.");
+      return;
+    }
+
+    setIsStartingEndToEndTest(true);
+    try {
+      viewport.iModel.selectionSet.replace(TARGET_ELEMENT_ID64);
+      randomIfcVisualizationState.setElementIds([TARGET_ELEMENT_ID64]);
+      setSelectedId64(TARGET_ELEMENT_ID64);
+      await viewport.zoomToElements([TARGET_ELEMENT_ID64], {
+        animateFrustumChange: true,
+        paddingPercent: 0.35,
+        minimumDimension: 2,
+      });
+    } catch (error) {
+      console.warn(`Unable to zoom to ID64 ${TARGET_ELEMENT_ID64} before end-to-end testing.`, error);
+    } finally {
+      randomValueQueryLogState.startEndToEndTesting();
+      setIsStartingEndToEndTest(false);
+      setIsConsoleLogOpen(true);
+    }
   }, []);
 
   /** The sample's render method */
@@ -165,13 +197,28 @@ const ViewportFrontstageApp = () => {
                 <li className="ifc-console-log__empty">No random value queries yet.</li>
               ) : queryLogEntries.map((entry) => (
                 <li key={entry.id} className="ifc-console-log__item">
-                  {entry.queriedAtUtc}
+                  <span className="ifc-console-log__time">{entry.queriedAtUtc}</span>
+                  <span className="ifc-console-log__metric">net {getDurationLabel(entry.queryStartedAtMs, entry.responseReceivedAtMs)}</span>
+                  <span className="ifc-console-log__metric">apply {getDurationLabel(entry.queryStartedAtMs, entry.valueAppliedAtMs)}</span>
+                  <span className="ifc-console-log__metric">
+                    e2e {entry.isEndToEndTest ? getDurationLabel(entry.queryStartedAtMs, entry.nextFrameAtMs) : "off"}
+                  </span>
                 </li>
               ))}
             </ol>
           </div>
         )}
       </div>
+      <button
+        type="button"
+        className="ifc-end-to-end-test__button"
+        disabled={!isIModelAppReady || isStartingEndToEndTest}
+        onClick={() => {
+          void startEndToEndTesting();
+        }}
+      >
+        {isStartingEndToEndTest ? "Starting..." : isEndToEndTesting ? "Testing" : "Start E2E Test"}
+      </button>
     </div>
   </>;
 };

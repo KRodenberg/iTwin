@@ -3,10 +3,12 @@ import { BeEvent } from "@itwin/core-bentley";
 import { ColorDef, FeatureAppearance } from "@itwin/core-common";
 import { IModelApp, type FeatureOverrideProvider, type ScreenViewport } from "@itwin/core-frontend";
 import { FeatureSymbology } from "@itwin/core-frontend";
+import { getMeasurementNow, randomValueQueryLogState } from "./RandomValueQueryLog";
 
 interface RandomIfcVisualizationSnapshot {
   elementIds: string[];
   randomValue?: number;
+  queryLogId?: number;
 }
 
 class RandomIfcVisualizationState {
@@ -32,14 +34,15 @@ class RandomIfcVisualizationState {
     this.onChanged.raiseEvent();
   }
 
-  public setRandomValue(randomValue: number) {
-    if (this._snapshot.randomValue === randomValue) {
+  public setRandomValue(randomValue: number, queryLogId?: number) {
+    if (this._snapshot.randomValue === randomValue && this._snapshot.queryLogId === queryLogId) {
       return;
     }
 
     this._snapshot = {
       ...this._snapshot,
       randomValue,
+      queryLogId,
     };
     this.onChanged.raiseEvent();
   }
@@ -103,9 +106,22 @@ export function useRandomIfcVisualization(enabled = true) {
     };
 
     const sync = () => {
-      provider.update(randomIfcVisualizationState.snapshot);
+      const snapshot = randomIfcVisualizationState.snapshot;
+      provider.update(snapshot);
       for (const viewport of attachedViewports) {
         viewport.setFeatureOverrideProviderChanged();
+      }
+
+      if (
+        snapshot.queryLogId !== undefined &&
+        attachedViewports.size > 0 &&
+        randomValueQueryLogState.shouldMeasureEndToEnd(snapshot.queryLogId)
+      ) {
+        const queryLogId = snapshot.queryLogId;
+        randomValueQueryLogState.markOverrideNotified(queryLogId, getMeasurementNow());
+        window.requestAnimationFrame(() => {
+          randomValueQueryLogState.markNextFrame(queryLogId, getMeasurementNow());
+        });
       }
     };
 

@@ -21,7 +21,8 @@ html, body, #root {
 }
 
 .ifc-id64-overlay,
-.ifc-console-log__toggle {
+.ifc-console-log__toggle,
+.ifc-end-to-end-test__button {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -47,8 +48,24 @@ html, body, #root {
   font-weight: 600;
 }
 
+.ifc-end-to-end-test__button {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ifc-end-to-end-test__button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .ifc-console-log__toggle:hover,
-.ifc-console-log__toggle:focus-visible {
+.ifc-console-log__toggle:focus-visible,
+.ifc-end-to-end-test__button:hover,
+.ifc-end-to-end-test__button:focus-visible {
   background: rgba(40, 49, 59, 0.94);
 }
 
@@ -56,7 +73,7 @@ html, body, #root {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: min(380px, calc(100vw - 24px));
+  width: min(600px, calc(100vw - 24px));
   overflow: hidden;
   color: #f4f7fb;
   background: rgba(25, 31, 38, 0.96);
@@ -92,6 +109,23 @@ html, body, #root {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
+}
+
+.ifc-console-log__item {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) repeat(3, minmax(82px, auto));
+  gap: 10px;
+  align-items: center;
+}
+
+.ifc-console-log__time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ifc-console-log__metric {
+  color: #b9c4d0;
+  text-align: right;
 }
 
 .ifc-console-log__empty {
