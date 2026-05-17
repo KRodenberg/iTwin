@@ -1,5 +1,6 @@
 import { PropertyRecord, PropertyValueFormat } from "@itwin/appui-abstract";
 import type { PropertyData, PropertyCategory } from "@itwin/components-react";
+import { BeEvent } from "@itwin/core-bentley";
 import { QueryBinder, QueryRowFormat } from "@itwin/core-common";
 import type { IModelConnection, ScreenViewport } from "@itwin/core-frontend";
 import { createSelectionScopeProps, Presentation } from "@itwin/presentation-frontend";
@@ -17,11 +18,41 @@ const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
 export const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
 type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
+export interface RandomValueQueryLogEntry {
+  id: number;
+  queriedAtUtc: string;
+}
+
 interface IfcGuidClass {
   schemaName: string;
   className: string;
   propertyName: string;
 }
+
+class RandomValueQueryLogState {
+  private _entries: RandomValueQueryLogEntry[] = [];
+  private _nextId = 1;
+
+  public readonly onChanged = new BeEvent<() => void>();
+
+  public get entries(): RandomValueQueryLogEntry[] {
+    return this._entries;
+  }
+
+  public addEntry(queriedAtUtc: string): void {
+    this._entries = [
+      {
+        id: this._nextId,
+        queriedAtUtc,
+      },
+      ...this._entries,
+    ].slice(0, 10000);
+    this._nextId += 1;
+    this.onChanged.raiseEvent();
+  }
+}
+
+export const randomValueQueryLogState = new RandomValueQueryLogState();
 
 let startupSelectionTimer: number | undefined;
 let startupSelectionInFlight = false;
@@ -218,6 +249,8 @@ async function refreshStartupRandomValue(): Promise<void> {
 }
 
 async function fetchRandomValue(): Promise<number> {
+  randomValueQueryLogState.addEntry(new Date().toISOString());
+
   const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Random API request failed with ${response.status}`);

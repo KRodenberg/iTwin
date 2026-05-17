@@ -6,26 +6,96 @@ html, body, #root {
   padding: 0;
 }
 
-.ifc-id64-overlay {
+.ifc-status-overlays {
   position: fixed;
   left: 12px;
   bottom: calc(12px + 2vh);
   z-index: 1000;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   max-width: calc(100vw - 24px);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.ifc-id64-overlay,
+.ifc-console-log__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 10px;
   color: #f4f7fb;
   background: rgba(25, 31, 38, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 12px;
-  line-height: 1.3;
   pointer-events: auto;
   user-select: text;
+}
+
+.ifc-console-log {
+  position: relative;
+}
+
+.ifc-console-log__toggle {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.ifc-console-log__toggle:hover,
+.ifc-console-log__toggle:focus-visible {
+  background: rgba(40, 49, 59, 0.94);
+}
+
+.ifc-console-log__panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(380px, calc(100vw - 24px));
+  overflow: hidden;
+  color: #f4f7fb;
+  background: rgba(25, 31, 38, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  user-select: text;
+}
+
+.ifc-console-log__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  color: #b9c4d0;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ifc-console-log__list {
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ifc-console-log__item,
+.ifc-console-log__empty {
+  padding: 7px 10px;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.ifc-console-log__empty {
+  color: #b9c4d0;
 }
 
 .ifc-id64-overlay__label {
