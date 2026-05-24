@@ -6,6 +6,7 @@ import {
   BrowserAuthorizationClient,
   BrowserAuthorizationClientConfiguration
 } from "@itwin/browser-authorization";
+import { getRuntimeConfigValue } from "./RuntimeConfig";
 
 const bentleyOidcMetadata = {
   issuer: "https://ims.bentley.com",
@@ -60,10 +61,10 @@ class SandboxAuthorizationClient extends BrowserAuthorizationClient {
 // the .env file of the project. Please visit developer.bentley.com to
 // register Application and get Authorization Client details
 export const authClient = new SandboxAuthorizationClient({
-  scope: process.env.IMJS_AUTH_CLIENT_SCOPES || "",
-  clientId: process.env.IMJS_AUTH_CLIENT_CLIENT_ID || "",
-  redirectUri: process.env.IMJS_AUTH_CLIENT_REDIRECT_URI || "",
-  postSignoutRedirectUri: process.env.IMJS_AUTH_CLIENT_LOGOUT_URI,
+  scope: getRuntimeConfigValue("IMJS_AUTH_CLIENT_SCOPES"),
+  clientId: getRuntimeConfigValue("IMJS_AUTH_CLIENT_CLIENT_ID"),
+  redirectUri: getRuntimeConfigValue("IMJS_AUTH_CLIENT_REDIRECT_URI"),
+  postSignoutRedirectUri: getRuntimeConfigValue("IMJS_AUTH_CLIENT_LOGOUT_URI"),
   responseType: "code",
-  authority: process.env.IMJS_AUTH_AUTHORITY,
+  authority: getRuntimeConfigValue("IMJS_AUTH_AUTHORITY"),
 });

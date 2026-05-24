@@ -40,7 +40,9 @@ RUN npm run build
 FROM nginx:1.27-alpine
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.d/40-write-runtime-env.sh /docker-entrypoint.d/40-write-runtime-env.sh
 COPY --from=build /app/build /usr/share/nginx/html
+RUN chmod +x /docker-entrypoint.d/40-write-runtime-env.sh
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1

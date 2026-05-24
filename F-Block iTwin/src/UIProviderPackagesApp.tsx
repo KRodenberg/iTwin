@@ -16,6 +16,7 @@ import {
   TARGET_ELEMENT_ID64,
 } from "./common/MechanicalEquipmentSensorPropertyDataProvider";
 import { mapLayerOptions } from "./common/MapLayerOptions";
+import { getRuntimeConfigValue } from "./common/RuntimeConfig";
 import { sensorIfcVisualizationState, useSensorIfcVisualization } from "./common/SensorIfcVisualization";
 import { sensorPollQueryLogState, type SensorPollQueryLogEntry } from "./common/SensorPollQueryLog";
 import { ViewSetup } from "./common/ViewSetup";
@@ -36,8 +37,8 @@ const uiProviders = [
   new TreeWidgetUiItemsProvider(),
 ];
 
-const iTwinId = process.env.IMJS_ITWIN_ID;
-const iModelId = process.env.IMJS_IMODEL_ID;
+const iTwinId = getRuntimeConfigValue("IMJS_ITWIN_ID");
+const iModelId = getRuntimeConfigValue("IMJS_IMODEL_ID");
 
 function getDurationLabel(startAtMs: number, endAtMs: number | undefined): string {
   return endAtMs === undefined ? "..." : `${Math.max(0, endAtMs - startAtMs).toFixed(1)}ms`;

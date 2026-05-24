@@ -28,7 +28,7 @@ The production redirect URI should be `https://itwinapp.geopointstudio.com/signi
 
 # Docker
 
-The Docker image serves the React build from nginx and proxies `/api/poll` to `https://rasppi.geopointstudio.com/poll`. Docker builds receive the iTwin configuration through build args, not committed env files.
+The Docker image serves the React build from nginx and proxies `/api/poll` to `https://rasppi.geopointstudio.com/poll`. The container writes `/env-config.js` when it starts, so the same GHCR image can be configured from Compose environment variables on the target machine.
 
 Build the production image:
 
@@ -65,6 +65,21 @@ Use the pull-only Compose file on another machine:
 CLOUDFLARED_TOKEN="your-token" \
 sudo docker compose -f docker-compose.ghcr.yml up -d
 ```
+
+The machine running `docker-compose.ghcr.yml` needs these values in its local `.env` file:
+
+```text
+CLOUDFLARED_TOKEN=your-cloudflare-token
+IMJS_AUTH_CLIENT_CLIENT_ID=your-itwin-client-id
+IMJS_AUTH_CLIENT_REDIRECT_URI=https://itwin.geopointstudio.com/signin-callback
+IMJS_AUTH_CLIENT_LOGOUT_URI=https://itwin.geopointstudio.com/
+IMJS_AUTH_CLIENT_SCOPES=itwin-platform
+IMJS_AUTH_AUTHORITY=https://ims.bentley.com
+IMJS_ITWIN_ID=your-itwin-id
+IMJS_IMODEL_ID=your-imodel-id
+```
+
+The redirect and logout URLs must exactly match the public domain registered in the Bentley/iTwin developer portal.
 
 If the GitHub package is private, log in first with a GitHub token that has package read access:
 
