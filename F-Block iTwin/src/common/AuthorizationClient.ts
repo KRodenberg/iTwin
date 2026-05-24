@@ -20,9 +20,11 @@ const bentleyOidcMetadata = {
 
 // This is a thin wrapper class on BrowserAuthorizationClient to validate OIDC configuration
 class SandboxAuthorizationClient extends BrowserAuthorizationClient {
+  private readonly _redirectUri: string;
 
   constructor(configuration: BrowserAuthorizationClientConfiguration) {
     super(configuration);
+    this._redirectUri = configuration.redirectUri;
     this.setAdvancedSettings({
       authority: configuration.authority ?? bentleyOidcMetadata.issuer,
       client_id: configuration.clientId,
@@ -50,9 +52,27 @@ class SandboxAuthorizationClient extends BrowserAuthorizationClient {
   // Sandbox accomplish authorization in the background before executing the code, therefore signIn gets already available token from the localStore cache.
   // Full interactive sign-in flow kicks in if you export the project from the Sandbox and run it locally.
   public async signIn() {
-    return super.handleSigninCallback()
-      .then(async () => super.signIn())
-      .catch((error) => console.error(error));
+    if (this.isSigninCallbackUrl()) {
+      await super.handleSigninCallback();
+      return;
+    }
+
+    await super.signIn();
+  }
+
+  private isSigninCallbackUrl(): boolean {
+    const redirectUrl = new URL(this._redirectUri);
+    return window.location.pathname === redirectUrl.pathname && this.hasSigninResponse();
+  }
+
+  private hasSigninResponse(): boolean {
+    const queryParams = new URLSearchParams(window.location.search);
+    if (queryParams.has("code") || queryParams.has("error") || queryParams.has("state")) {
+      return true;
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    return hashParams.has("code") || hashParams.has("error") || hashParams.has("state");
   }
 }
 
