@@ -4,22 +4,31 @@ import { QueryBinder, QueryRowFormat } from "@itwin/core-common";
 import type { IModelConnection, ScreenViewport } from "@itwin/core-frontend";
 import { createSelectionScopeProps, Presentation } from "@itwin/presentation-frontend";
 import { PresentationPropertyDataProvider } from "@itwin/presentation-components";
-import { randomIfcVisualizationState } from "./RandomIfcVisualization";
-import { getErrorMessage, getMeasurementNow, randomValueQueryLogState } from "./RandomValueQueryLog";
+import { sensorIfcVisualizationState } from "./SensorIfcVisualization";
+import { getErrorMessage, getMeasurementNow, sensorPollQueryLogState, type SensorReading } from "./SensorPollQueryLog";
 
 const TARGET_IFC_GUID = "0GYqmJBIb6LPFuePZ9lxOc";
 const IFC_CATEGORY_LABEL = "IFC";
 const TARGET_IFC_GUID_PROPERTY = "IFCGUID";
-const RANDOM_PROPERTY_NAME = "Random";
-const RANDOM_PROPERTY_LABEL = "Random";
-const RANDOM_CATEGORY_NAME = "__ifc_random__";
-const RANDOM_SOURCE_URL = "/api/csrng?min=0&max=100";
+const TEMPERATURE_PROPERTY_NAME = "Temperature";
+const TEMPERATURE_PROPERTY_LABEL = "Temperature (C)";
+const HUMIDITY_PROPERTY_NAME = "Humidity";
+const HUMIDITY_PROPERTY_LABEL = "Humidity (%)";
+const SENSOR_CATEGORY_NAME = "__ifc_sensor__";
+const SENSOR_SOURCE_URL = "/api/poll";
+const SENSOR_POLL_INTERVAL_MS = 1000;
 const TARGET_IFC_GUID_PROPERTY_QUERY_NAME = "IFCGUID";
 export const TARGET_ELEMENT_ID64 = "0x20000000a76";
 
-type RandomApiResponse = { random?: number } | Array<{ random?: number }>;
-interface RandomValueResponse {
-  value: number;
+type SensorApiResponse = {
+  temperature_c?: unknown;
+  humidity_percent?: unknown;
+  timestamp?: unknown;
+  status?: unknown;
+};
+
+interface SensorReadingResponse {
+  reading: SensorReading;
   queryLogId: number;
 }
 
@@ -32,29 +41,30 @@ interface IfcGuidClass {
 let startupSelectionTimer: number | undefined;
 let startupSelectionInFlight = false;
 let startupSelectionComplete = false;
-let startupRandomRefreshTimer: number | undefined;
+let startupSensorRefreshTimer: number | undefined;
 
-export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationPropertyDataProvider {
-  private _randomValue = "Loading...";
-  private _removeRandomValueListener?: () => void;
+export class MechanicalEquipmentSensorPropertyDataProvider extends PresentationPropertyDataProvider {
+  private _temperatureValue = "Loading...";
+  private _humidityValue = "Loading...";
+  private _removeSensorReadingListener?: () => void;
   private _disposed = false;
 
   public constructor(imodel: IModelConnection) {
     super({ imodel });
 
-    startStartupRandomRefresh();
-    this._removeRandomValueListener = randomIfcVisualizationState.onChanged.addListener(() => {
-      this.syncRandomValue();
+    startStartupSensorRefresh();
+    this._removeSensorReadingListener = sensorIfcVisualizationState.onChanged.addListener(() => {
+      this.syncSensorReading();
     });
-    this.syncRandomValue();
+    this.syncSensorReading();
   }
 
   public override dispose(): void {
     this._disposed = true;
 
-    if (this._removeRandomValueListener !== undefined) {
-      this._removeRandomValueListener();
-      this._removeRandomValueListener = undefined;
+    if (this._removeSensorReadingListener !== undefined) {
+      this._removeSensorReadingListener();
+      this._removeSensorReadingListener = undefined;
     }
 
     super.dispose();
@@ -62,25 +72,27 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
 
   public override async getData(): Promise<PropertyData> {
     const data = await super.getData();
-    return this.withRandomProperty(data);
+    return this.withSensorProperties(data);
   }
 
-  private syncRandomValue(): void {
+  private syncSensorReading(): void {
     if (this._disposed) {
       return;
     }
 
-    const randomValue = randomIfcVisualizationState.snapshot.randomValue;
-    const nextRandomValue = randomValue === undefined ? "Loading..." : String(randomValue);
-    if (this._randomValue === nextRandomValue) {
+    const sensorReading = sensorIfcVisualizationState.snapshot.sensorReading;
+    const nextTemperatureValue = sensorReading === undefined ? "Loading..." : formatTemperature(sensorReading.temperatureC);
+    const nextHumidityValue = sensorReading === undefined ? "Loading..." : formatHumidity(sensorReading.humidityPercent);
+    if (this._temperatureValue === nextTemperatureValue && this._humidityValue === nextHumidityValue) {
       return;
     }
 
-    this._randomValue = nextRandomValue;
+    this._temperatureValue = nextTemperatureValue;
+    this._humidityValue = nextHumidityValue;
     this.onDataChanged.raiseEvent();
   }
 
-  private withRandomProperty(data: PropertyData): PropertyData {
+  private withSensorProperties(data: PropertyData): PropertyData {
     if (!hasTargetIfcGuid(data.records)) {
       return data;
     }
@@ -88,31 +100,38 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
     const matchingCategoryNames = collectIfcCategoryNames(data.categories);
     const elementIds = getCurrentElementIds(this);
     if (elementIds.length > 0) {
-      randomIfcVisualizationState.setElementIds(elementIds);
+      sensorIfcVisualizationState.setElementIds(elementIds);
     }
 
     const categories = [...data.categories];
     if (matchingCategoryNames.size === 0) {
       categories.push({
-        name: RANDOM_CATEGORY_NAME,
+        name: SENSOR_CATEGORY_NAME,
         label: IFC_CATEGORY_LABEL,
         expand: true,
       });
-      matchingCategoryNames.add(RANDOM_CATEGORY_NAME);
+      matchingCategoryNames.add(SENSOR_CATEGORY_NAME);
     }
 
-    const randomRecord = PropertyRecord.fromString(this._randomValue, {
-      name: RANDOM_PROPERTY_NAME,
-      displayLabel: RANDOM_PROPERTY_LABEL,
+    const temperatureRecord = PropertyRecord.fromString(this._temperatureValue, {
+      name: TEMPERATURE_PROPERTY_NAME,
+      displayLabel: TEMPERATURE_PROPERTY_LABEL,
       typename: "string",
     });
+    const humidityRecord = PropertyRecord.fromString(this._humidityValue, {
+      name: HUMIDITY_PROPERTY_NAME,
+      displayLabel: HUMIDITY_PROPERTY_LABEL,
+      typename: "string",
+    });
+    const injectedPropertyNames = new Set([TEMPERATURE_PROPERTY_NAME, HUMIDITY_PROPERTY_NAME]);
 
     const records = { ...data.records };
     for (const categoryName of matchingCategoryNames) {
       const existingRecords = records[categoryName] ?? [];
       records[categoryName] = [
-        ...existingRecords.filter((record) => record.property.name !== RANDOM_PROPERTY_NAME),
-        randomRecord,
+        ...existingRecords.filter((record) => !injectedPropertyNames.has(record.property.name)),
+        temperatureRecord,
+        humidityRecord,
       ];
     }
 
@@ -124,12 +143,12 @@ export class MechanicalEquipmentRandomPropertyDataProvider extends PresentationP
   }
 }
 
-export const createMechanicalEquipmentRandomPropertyDataProvider = (imodel: IModelConnection) =>
-  new MechanicalEquipmentRandomPropertyDataProvider(imodel);
+export const createMechanicalEquipmentSensorPropertyDataProvider = (imodel: IModelConnection) =>
+  new MechanicalEquipmentSensorPropertyDataProvider(imodel);
 
-export async function initializeMechanicalEquipmentRandomEntity(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
+export async function initializeMechanicalEquipmentSensorEntity(imodel: IModelConnection, viewport?: ScreenViewport): Promise<void> {
   startStartupSelection(imodel, viewport);
-  startStartupRandomRefresh();
+  startStartupSensorRefresh();
 }
 
 function startStartupSelection(imodel: IModelConnection, viewport?: ScreenViewport): void {
@@ -155,7 +174,7 @@ async function selectStartupElement(imodel: IModelConnection, viewport?: ScreenV
     const idsToSelect = elementIds.length > 0 ? elementIds : [TARGET_ELEMENT_ID64];
     if (idsToSelect.length > 0) {
       imodel.selectionSet.add(idsToSelect);
-      randomIfcVisualizationState.setElementIds(idsToSelect);
+      sensorIfcVisualizationState.setElementIds(idsToSelect);
       if (viewport !== undefined) {
         try {
           await viewport.zoomToElements(idsToSelect, {
@@ -199,52 +218,94 @@ function stopStartupSelection(): void {
   startupSelectionTimer = undefined;
 }
 
-function startStartupRandomRefresh(): void {
-  if (startupRandomRefreshTimer !== undefined) {
+function startStartupSensorRefresh(): void {
+  if (startupSensorRefreshTimer !== undefined) {
     return;
   }
 
-  void refreshStartupRandomValue();
-  startupRandomRefreshTimer = window.setInterval(() => {
-    void refreshStartupRandomValue();
-  }, 1000);
+  void refreshStartupSensorReading();
+  startupSensorRefreshTimer = window.setInterval(() => {
+    void refreshStartupSensorReading();
+  }, SENSOR_POLL_INTERVAL_MS);
 }
 
-async function refreshStartupRandomValue(): Promise<void> {
+async function refreshStartupSensorReading(): Promise<void> {
   try {
-    const randomValueResponse = await fetchRandomValue();
-    randomValueQueryLogState.markValueApplied(randomValueResponse.queryLogId, getMeasurementNow());
-    randomIfcVisualizationState.setRandomValue(randomValueResponse.value, randomValueResponse.queryLogId);
+    const sensorReadingResponse = await fetchSensorReading();
+    sensorPollQueryLogState.markValueApplied(sensorReadingResponse.queryLogId, getMeasurementNow());
+    sensorIfcVisualizationState.setSensorReading(sensorReadingResponse.reading, sensorReadingResponse.queryLogId);
   } catch (error) {
-    console.warn("Unable to fetch startup random value.", error);
+    console.warn("Unable to fetch startup sensor reading.", error);
   }
 }
 
-async function fetchRandomValue(): Promise<RandomValueResponse> {
-  const queryLogId = randomValueQueryLogState.addQueryStarted(new Date().toISOString(), getMeasurementNow());
+async function fetchSensorReading(): Promise<SensorReadingResponse> {
+  const queryLogId = sensorPollQueryLogState.addQueryStarted(new Date().toISOString(), getMeasurementNow());
 
   try {
-    const response = await fetch(RANDOM_SOURCE_URL, { cache: "no-store" });
-    randomValueQueryLogState.markResponseReceived(queryLogId, getMeasurementNow());
+    const response = await fetch(SENSOR_SOURCE_URL, { cache: "no-store" });
+    sensorPollQueryLogState.markResponseReceived(queryLogId, getMeasurementNow());
     if (!response.ok) {
-      throw new Error(`Random API request failed with ${response.status}`);
+      throw new Error(`Sensor poll request failed with ${response.status}`);
     }
 
-    const payload = (await response.json()) as RandomApiResponse;
-    const nextValue = Array.isArray(payload) ? payload[0]?.random : payload.random;
-    if (typeof nextValue !== "number") {
-      throw new Error("Random API response did not include a numeric random value");
-    }
+    const payload = (await response.json()) as SensorApiResponse;
+    const reading = parseSensorReading(payload);
 
-    randomValueQueryLogState.markValueParsed(queryLogId, getMeasurementNow(), nextValue);
+    sensorPollQueryLogState.markReadingParsed(queryLogId, getMeasurementNow(), reading);
     return {
-      value: nextValue,
+      reading,
       queryLogId,
     };
   } catch (error) {
-    randomValueQueryLogState.markFailed(queryLogId, getMeasurementNow(), getErrorMessage(error));
+    sensorPollQueryLogState.markFailed(queryLogId, getMeasurementNow(), getErrorMessage(error));
     throw error;
   }
+}
+
+function parseSensorReading(payload: SensorApiResponse): SensorReading {
+  const temperatureC = getFiniteNumber(payload.temperature_c);
+  if (temperatureC === undefined) {
+    throw new Error("Sensor poll response did not include numeric temperature_c");
+  }
+
+  const humidityPercent = getFiniteNumber(payload.humidity_percent);
+  if (humidityPercent === undefined) {
+    throw new Error("Sensor poll response did not include numeric humidity_percent");
+  }
+
+  const status = typeof payload.status === "string" ? payload.status : undefined;
+  if (status !== undefined && status.toLowerCase() !== "ok") {
+    throw new Error(`Sensor poll response status was ${status}`);
+  }
+
+  return {
+    temperatureC,
+    humidityPercent,
+    timestamp: typeof payload.timestamp === "string" ? payload.timestamp : undefined,
+    status,
+  };
+}
+
+function getFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : undefined;
+  }
+
+  return undefined;
+}
+
+function formatTemperature(temperatureC: number): string {
+  return `${temperatureC.toFixed(1)} C`;
+}
+
+function formatHumidity(humidityPercent: number): string {
+  return `${humidityPercent.toFixed(0)}%`;
 }
 
 async function queryElementIdsByIfcGuid(imodel: IModelConnection, ifcGuid: string): Promise<string[]> {

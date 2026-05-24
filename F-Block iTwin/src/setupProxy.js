@@ -2,12 +2,12 @@ const { createProxyMiddleware } = require("http-proxy-middleware");
 
 module.exports = function setupProxy(app) {
   app.use(
-    "/api/csrng",
+    "/api/poll",
     createProxyMiddleware({
-      target: "https://csrng.net",
+      target: "https://rasppi.geopointstudio.com",
       changeOrigin: true,
       pathRewrite: {
-        "^/api/csrng": "/csrng/csrng.php",
+        "^/api/poll": "/poll",
       },
     }),
   );

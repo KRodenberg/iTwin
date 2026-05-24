@@ -5,6 +5,52 @@ In the project directory, you can run:
 
 ### `npm start`
 
+# Docker
+
+The production build uses `.env.production`, which points auth callbacks at `https://itwinapp.geopointstudio.com/signin-callback`. The Docker image serves the React build from nginx and proxies `/api/poll` to `https://rasppi.geopointstudio.com/poll`.
+
+Build the production image:
+
+```sh
+sudo docker build -t f-block-itwin:latest .
+```
+
+Run just the app container locally:
+
+```sh
+sudo docker run --rm -p 3000:80 f-block-itwin:latest
+```
+
+Run the app and Cloudflare tunnel with Compose:
+
+```sh
+CLOUDFLARED_TOKEN="your-token" \
+sudo docker compose up -d --build
+```
+
+The app is served locally at `http://localhost:3000`. If the Cloudflare tunnel is configured in the Cloudflare dashboard, set its service URL to `http://itwin-app:80` so it can reach the app on the Compose network.
+
+## GitHub Container Registry
+
+Pushing to the `main` or `testing` branches publishes the production Docker image to GitHub Container Registry:
+
+```sh
+ghcr.io/krodenberg/f-block-itwin:latest
+```
+
+Use the pull-only Compose file on another machine:
+
+```sh
+CLOUDFLARED_TOKEN="your-token" \
+sudo docker compose -f docker-compose.ghcr.yml up -d
+```
+
+If the GitHub package is private, log in first with a GitHub token that has package read access:
+
+```sh
+echo "your-github-token" | sudo docker login ghcr.io -u KRodenberg --password-stdin
+```
+
 # Getting Started with the iTwin Viewer Create React App Template
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).

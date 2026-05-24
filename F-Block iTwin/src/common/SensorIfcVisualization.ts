@@ -3,22 +3,22 @@ import { BeEvent } from "@itwin/core-bentley";
 import { ColorDef, FeatureAppearance } from "@itwin/core-common";
 import { IModelApp, type FeatureOverrideProvider, type ScreenViewport } from "@itwin/core-frontend";
 import { FeatureSymbology } from "@itwin/core-frontend";
-import { getMeasurementNow, randomValueQueryLogState } from "./RandomValueQueryLog";
+import { getMeasurementNow, sensorPollQueryLogState, type SensorReading } from "./SensorPollQueryLog";
 
-interface RandomIfcVisualizationSnapshot {
+interface SensorIfcVisualizationSnapshot {
   elementIds: string[];
-  randomValue?: number;
+  sensorReading?: SensorReading;
   queryLogId?: number;
 }
 
-class RandomIfcVisualizationState {
-  private _snapshot: RandomIfcVisualizationSnapshot = {
+class SensorIfcVisualizationState {
+  private _snapshot: SensorIfcVisualizationSnapshot = {
     elementIds: [],
   };
 
   public readonly onChanged = new BeEvent<() => void>();
 
-  public get snapshot(): RandomIfcVisualizationSnapshot {
+  public get snapshot(): SensorIfcVisualizationSnapshot {
     return this._snapshot;
   }
 
@@ -34,35 +34,35 @@ class RandomIfcVisualizationState {
     this.onChanged.raiseEvent();
   }
 
-  public setRandomValue(randomValue: number, queryLogId?: number) {
-    if (this._snapshot.randomValue === randomValue && this._snapshot.queryLogId === queryLogId) {
+  public setSensorReading(sensorReading: SensorReading, queryLogId?: number) {
+    if (haveSameSensorReading(this._snapshot.sensorReading, sensorReading) && this._snapshot.queryLogId === queryLogId) {
       return;
     }
 
     this._snapshot = {
       ...this._snapshot,
-      randomValue,
+      sensorReading,
       queryLogId,
     };
     this.onChanged.raiseEvent();
   }
 }
 
-class RandomIfcGradientOverrideProvider implements FeatureOverrideProvider {
+class SensorIfcGradientOverrideProvider implements FeatureOverrideProvider {
   private _elementIds: string[] = [];
-  private _randomValue?: number;
+  private _sensorReading?: SensorReading;
 
-  public update(snapshot: RandomIfcVisualizationSnapshot) {
+  public update(snapshot: SensorIfcVisualizationSnapshot) {
     this._elementIds = snapshot.elementIds;
-    this._randomValue = snapshot.randomValue;
+    this._sensorReading = snapshot.sensorReading;
   }
 
   public addFeatureOverrides(overrides: FeatureSymbology.Overrides): void {
-    if (this._elementIds.length === 0 || this._randomValue === undefined) {
+    if (this._elementIds.length === 0 || this._sensorReading === undefined) {
       return;
     }
 
-    const appearance = FeatureAppearance.fromRgb(getGradientColor(this._randomValue));
+    const appearance = FeatureAppearance.fromRgb(getHumidityGradientColor(this._sensorReading.humidityPercent));
     for (const elementId of this._elementIds) {
       overrides.override({
         elementId,
@@ -72,9 +72,9 @@ class RandomIfcGradientOverrideProvider implements FeatureOverrideProvider {
   }
 }
 
-export const randomIfcVisualizationState = new RandomIfcVisualizationState();
+export const sensorIfcVisualizationState = new SensorIfcVisualizationState();
 
-export function useRandomIfcVisualization(enabled = true) {
+export function useSensorIfcVisualization(enabled = true) {
   useEffect(() => {
     if (!enabled) {
       return;
@@ -85,7 +85,7 @@ export function useRandomIfcVisualization(enabled = true) {
       return;
     }
 
-    const provider = new RandomIfcGradientOverrideProvider();
+    const provider = new SensorIfcGradientOverrideProvider();
     const attachedViewports = new Set<ScreenViewport>();
 
     const attach = (viewport: ScreenViewport) => {
@@ -106,7 +106,7 @@ export function useRandomIfcVisualization(enabled = true) {
     };
 
     const sync = () => {
-      const snapshot = randomIfcVisualizationState.snapshot;
+      const snapshot = sensorIfcVisualizationState.snapshot;
       provider.update(snapshot);
       for (const viewport of attachedViewports) {
         viewport.setFeatureOverrideProviderChanged();
@@ -115,12 +115,12 @@ export function useRandomIfcVisualization(enabled = true) {
       if (
         snapshot.queryLogId !== undefined &&
         attachedViewports.size > 0 &&
-        randomValueQueryLogState.shouldMeasureEndToEnd(snapshot.queryLogId)
+        sensorPollQueryLogState.shouldMeasureEndToEnd(snapshot.queryLogId)
       ) {
         const queryLogId = snapshot.queryLogId;
-        randomValueQueryLogState.markOverrideNotified(queryLogId, getMeasurementNow());
+        sensorPollQueryLogState.markOverrideNotified(queryLogId, getMeasurementNow());
         window.requestAnimationFrame(() => {
-          randomValueQueryLogState.markNextFrame(queryLogId, getMeasurementNow());
+          sensorPollQueryLogState.markNextFrame(queryLogId, getMeasurementNow());
         });
       }
     };
@@ -129,7 +129,7 @@ export function useRandomIfcVisualization(enabled = true) {
       attach(viewport);
     }
 
-    const removeChangedListener = randomIfcVisualizationState.onChanged.addListener(sync);
+    const removeChangedListener = sensorIfcVisualizationState.onChanged.addListener(sync);
     const removeViewOpenListener = viewManager.onViewOpen.addListener((viewport) => {
       attach(viewport);
       sync();
@@ -153,9 +153,9 @@ export function useRandomIfcVisualization(enabled = true) {
   }, [enabled]);
 }
 
-function getGradientColor(randomValue: number): ColorDef {
-  const clampedValue = Math.max(0, Math.min(100, randomValue));
-  const ratio = clampedValue / 100;
+function getHumidityGradientColor(humidityPercent: number): ColorDef {
+  const clampedValue = Math.max(40, Math.min(100, humidityPercent));
+  const ratio = (clampedValue - 40) / 60;
   const red = Math.round(255 * ratio);
   const green = Math.round(255 * (1 - ratio));
   return ColorDef.from(red, green, 0);
@@ -167,4 +167,15 @@ function haveSameIds(lhs: string[], rhs: string[]): boolean {
   }
 
   return lhs.every((value, index) => value === rhs[index]);
+}
+
+function haveSameSensorReading(lhs: SensorReading | undefined, rhs: SensorReading): boolean {
+  if (lhs === undefined) {
+    return false;
+  }
+
+  return lhs.temperatureC === rhs.temperatureC &&
+    lhs.humidityPercent === rhs.humidityPercent &&
+    lhs.timestamp === rhs.timestamp &&
+    lhs.status === rhs.status;
 }

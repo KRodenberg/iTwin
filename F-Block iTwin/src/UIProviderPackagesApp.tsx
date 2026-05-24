@@ -11,13 +11,13 @@ import { PropertyGridManager, PropertyGridUiItemsProvider } from "@itwin/propert
 import { TreeWidget, TreeWidgetUiItemsProvider } from "@itwin/tree-widget-react";
 import { authClient } from "./common/AuthorizationClient";
 import {
-  createMechanicalEquipmentRandomPropertyDataProvider,
-  initializeMechanicalEquipmentRandomEntity,
+  createMechanicalEquipmentSensorPropertyDataProvider,
+  initializeMechanicalEquipmentSensorEntity,
   TARGET_ELEMENT_ID64,
-} from "./common/MechanicalEquipmentRandomPropertyDataProvider";
+} from "./common/MechanicalEquipmentSensorPropertyDataProvider";
 import { mapLayerOptions } from "./common/MapLayerOptions";
-import { randomIfcVisualizationState, useRandomIfcVisualization } from "./common/RandomIfcVisualization";
-import { randomValueQueryLogState, type RandomValueQueryLogEntry } from "./common/RandomValueQueryLog";
+import { sensorIfcVisualizationState, useSensorIfcVisualization } from "./common/SensorIfcVisualization";
+import { sensorPollQueryLogState, type SensorPollQueryLogEntry } from "./common/SensorPollQueryLog";
 import { ViewSetup } from "./common/ViewSetup";
 
 const viewportOptions = {
@@ -30,7 +30,7 @@ const uiProviders = [
   new MeasureToolsUiItemsProvider(),
   new PropertyGridUiItemsProvider({
     propertyGridProps: {
-      createDataProvider: createMechanicalEquipmentRandomPropertyDataProvider,
+      createDataProvider: createMechanicalEquipmentSensorPropertyDataProvider,
     },
   }),
   new TreeWidgetUiItemsProvider(),
@@ -43,14 +43,22 @@ function getDurationLabel(startAtMs: number, endAtMs: number | undefined): strin
   return endAtMs === undefined ? "..." : `${Math.max(0, endAtMs - startAtMs).toFixed(1)}ms`;
 }
 
+function getSensorReadingLabel(entry: SensorPollQueryLogEntry): string {
+  if (entry.temperatureC === undefined || entry.humidityPercent === undefined) {
+    return "...";
+  }
+
+  return `${entry.temperatureC.toFixed(1)} C / ${entry.humidityPercent.toFixed(0)}%`;
+}
+
 const ViewportFrontstageApp = () => {
   const [isIModelAppReady, setIsIModelAppReady] = useState(false);
   const [selectedId64, setSelectedId64] = useState(TARGET_ELEMENT_ID64);
   const [isConsoleLogOpen, setIsConsoleLogOpen] = useState(false);
   const [isStartingEndToEndTest, setIsStartingEndToEndTest] = useState(false);
-  const [isEndToEndTesting, setIsEndToEndTesting] = useState(randomValueQueryLogState.isEndToEndTesting);
-  const [queryLogEntries, setQueryLogEntries] = useState<RandomValueQueryLogEntry[]>(randomValueQueryLogState.entries);
-  useRandomIfcVisualization(isIModelAppReady);
+  const [isEndToEndTesting, setIsEndToEndTesting] = useState(sensorPollQueryLogState.isEndToEndTesting);
+  const [queryLogEntries, setQueryLogEntries] = useState<SensorPollQueryLogEntry[]>(sensorPollQueryLogState.entries);
+  useSensorIfcVisualization(isIModelAppReady);
 
   useEffect(() => {
     if (!isIModelAppReady) {
@@ -58,7 +66,7 @@ const ViewportFrontstageApp = () => {
     }
 
     const initializeViewport = (viewport: NonNullable<typeof IModelApp.viewManager.selectedView>): void => {
-      void initializeMechanicalEquipmentRandomEntity(viewport.iModel, viewport);
+      void initializeMechanicalEquipmentSensorEntity(viewport.iModel, viewport);
     };
     const updateSelectedId64 = (imodel: IModelConnection): void => {
       const selectedIds = Array.from(imodel.selectionSet.elements);
@@ -106,11 +114,11 @@ const ViewportFrontstageApp = () => {
 
   useEffect(() => {
     const syncQueryLogEntries = (): void => {
-      setQueryLogEntries(randomValueQueryLogState.entries);
-      setIsEndToEndTesting(randomValueQueryLogState.isEndToEndTesting);
+      setQueryLogEntries(sensorPollQueryLogState.entries);
+      setIsEndToEndTesting(sensorPollQueryLogState.isEndToEndTesting);
     };
 
-    const removeQueryLogListener = randomValueQueryLogState.onChanged.addListener(syncQueryLogEntries);
+    const removeQueryLogListener = sensorPollQueryLogState.onChanged.addListener(syncQueryLogEntries);
     syncQueryLogEntries();
 
     return () => {
@@ -140,7 +148,7 @@ const ViewportFrontstageApp = () => {
     setIsStartingEndToEndTest(true);
     try {
       viewport.iModel.selectionSet.replace(TARGET_ELEMENT_ID64);
-      randomIfcVisualizationState.setElementIds([TARGET_ELEMENT_ID64]);
+      sensorIfcVisualizationState.setElementIds([TARGET_ELEMENT_ID64]);
       setSelectedId64(TARGET_ELEMENT_ID64);
       await viewport.zoomToElements([TARGET_ELEMENT_ID64], {
         animateFrustumChange: true,
@@ -150,7 +158,7 @@ const ViewportFrontstageApp = () => {
     } catch (error) {
       console.warn(`Unable to zoom to ID64 ${TARGET_ELEMENT_ID64} before end-to-end testing.`, error);
     } finally {
-      randomValueQueryLogState.startEndToEndTesting();
+      sensorPollQueryLogState.startEndToEndTesting();
       setIsStartingEndToEndTest(false);
       setIsConsoleLogOpen(true);
     }
@@ -184,7 +192,7 @@ const ViewportFrontstageApp = () => {
             setIsConsoleLogOpen((isOpen) => !isOpen);
           }}
         >
-          Console Log
+          Sensor Poll Log
         </button>
         {isConsoleLogOpen && (
           <div id="ifc-console-log-list" className="ifc-console-log__panel" role="log" aria-live="polite">
@@ -194,10 +202,11 @@ const ViewportFrontstageApp = () => {
             </div>
             <ol className="ifc-console-log__list">
               {queryLogEntries.length === 0 ? (
-                <li className="ifc-console-log__empty">No random value queries yet.</li>
+                <li className="ifc-console-log__empty">No sensor polls yet.</li>
               ) : queryLogEntries.map((entry) => (
                 <li key={entry.id} className="ifc-console-log__item">
                   <span className="ifc-console-log__time">{entry.queriedAtUtc}</span>
+                  <span className="ifc-console-log__metric">{getSensorReadingLabel(entry)}</span>
                   <span className="ifc-console-log__metric">net {getDurationLabel(entry.queryStartedAtMs, entry.responseReceivedAtMs)}</span>
                   <span className="ifc-console-log__metric">apply {getDurationLabel(entry.queryStartedAtMs, entry.valueAppliedAtMs)}</span>
                   <span className="ifc-console-log__metric">

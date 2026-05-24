@@ -1,6 +1,13 @@
 import { BeEvent } from "@itwin/core-bentley";
 
-export interface RandomValueQueryLogEntry {
+export interface SensorReading {
+  temperatureC: number;
+  humidityPercent: number;
+  timestamp?: string;
+  status?: string;
+}
+
+export interface SensorPollQueryLogEntry {
   id: number;
   queriedAtUtc: string;
   queryStartedAtMs: number;
@@ -10,18 +17,19 @@ export interface RandomValueQueryLogEntry {
   valueAppliedAtMs?: number;
   overrideNotifiedAtMs?: number;
   nextFrameAtMs?: number;
-  randomValue?: number;
+  temperatureC?: number;
+  humidityPercent?: number;
   errorMessage?: string;
 }
 
-class RandomValueQueryLogState {
-  private _entries: RandomValueQueryLogEntry[] = [];
+class SensorPollQueryLogState {
+  private _entries: SensorPollQueryLogEntry[] = [];
   private _nextId = 1;
   private _isEndToEndTesting = false;
 
   public readonly onChanged = new BeEvent<() => void>();
 
-  public get entries(): RandomValueQueryLogEntry[] {
+  public get entries(): SensorPollQueryLogEntry[] {
     return this._entries;
   }
 
@@ -61,15 +69,20 @@ class RandomValueQueryLogState {
   }
 
   public markResponseReceived(id: number, responseReceivedAtMs: number): void {
-    this.updateEntry(id, { responseReceivedAtMs });
+    this.updateEntry({ id, responseReceivedAtMs });
   }
 
-  public markValueParsed(id: number, valueParsedAtMs: number, randomValue: number): void {
-    this.updateEntry(id, { valueParsedAtMs, randomValue });
+  public markReadingParsed(id: number, valueParsedAtMs: number, reading: SensorReading): void {
+    this.updateEntry({
+      id,
+      valueParsedAtMs,
+      temperatureC: reading.temperatureC,
+      humidityPercent: reading.humidityPercent,
+    });
   }
 
   public markValueApplied(id: number, valueAppliedAtMs: number): void {
-    this.updateEntry(id, { valueAppliedAtMs });
+    this.updateEntry({ id, valueAppliedAtMs });
   }
 
   public markOverrideNotified(id: number, overrideNotifiedAtMs: number): void {
@@ -81,16 +94,17 @@ class RandomValueQueryLogState {
   }
 
   public markFailed(id: number, failedAtMs: number, errorMessage: string): void {
-    this.updateEntry(id, {
+    this.updateEntry({
+      id,
       errorMessage,
       responseReceivedAtMs: this.findEntry(id)?.responseReceivedAtMs ?? failedAtMs,
     });
   }
 
-  private updateEntry(id: number, updates: Partial<RandomValueQueryLogEntry>): void {
+  private updateEntry(updates: Partial<SensorPollQueryLogEntry> & { id: number }): void {
     let didUpdate = false;
     this._entries = this._entries.map((entry) => {
-      if (entry.id !== id) {
+      if (entry.id !== updates.id) {
         return entry;
       }
 
@@ -106,25 +120,25 @@ class RandomValueQueryLogState {
     }
   }
 
-  private updateEntryIfUnset<K extends keyof RandomValueQueryLogEntry>(
+  private updateEntryIfUnset<K extends keyof SensorPollQueryLogEntry>(
     id: number,
     key: K,
-    value: RandomValueQueryLogEntry[K],
+    value: SensorPollQueryLogEntry[K],
   ): void {
     const entry = this.findEntry(id);
     if (entry === undefined || entry[key] !== undefined) {
       return;
     }
 
-    this.updateEntry(id, { [key]: value } as Partial<RandomValueQueryLogEntry>);
+    this.updateEntry({ id, [key]: value } as Partial<SensorPollQueryLogEntry> & { id: number });
   }
 
-  private findEntry(id: number): RandomValueQueryLogEntry | undefined {
+  private findEntry(id: number): SensorPollQueryLogEntry | undefined {
     return this._entries.find((entry) => entry.id === id);
   }
 }
 
-export const randomValueQueryLogState = new RandomValueQueryLogState();
+export const sensorPollQueryLogState = new SensorPollQueryLogState();
 
 export function getMeasurementNow(): number {
   return performance.now();

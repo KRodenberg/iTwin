@@ -1,0 +1,19 @@
+services:
+  itwin-app:
+    image: ghcr.io/krodenberg/f-block-itwin:latest
+    pull_policy: always
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - "${CLOUDFLARED_TOKEN:?Set CLOUDFLARED_TOKEN before starting compose}"
+    depends_on:
+      - itwin-app
+    restart: unless-stopped

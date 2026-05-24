@@ -7,11 +7,27 @@ import {
   BrowserAuthorizationClientConfiguration
 } from "@itwin/browser-authorization";
 
+const bentleyOidcMetadata = {
+  issuer: "https://ims.bentley.com",
+  authorization_endpoint: "https://ims.bentley.com/connect/authorize",
+  token_endpoint: "https://ims.bentley.com/connect/token",
+  userinfo_endpoint: "https://ims.bentley.com/connect/userinfo",
+  revocation_endpoint: "https://ims.bentley.com/connect/revocation",
+  end_session_endpoint: "https://ims.bentley.com/connect/endsession",
+  jwks_uri: "https://ims.bentley.com/.well-known/openid-configuration/jwks",
+};
+
 // This is a thin wrapper class on BrowserAuthorizationClient to validate OIDC configuration
 class SandboxAuthorizationClient extends BrowserAuthorizationClient {
 
   constructor(configuration: BrowserAuthorizationClientConfiguration) {
     super(configuration);
+    this.setAdvancedSettings({
+      authority: configuration.authority ?? bentleyOidcMetadata.issuer,
+      client_id: configuration.clientId,
+      redirect_uri: configuration.redirectUri,
+      metadata: bentleyOidcMetadata,
+    });
     this.validateConfiguration(configuration);
   }
 

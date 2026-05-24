@@ -73,7 +73,7 @@ html, body, #root {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: min(600px, calc(100vw - 24px));
+  width: min(720px, calc(100vw - 24px));
   overflow: hidden;
   color: #f4f7fb;
   background: rgba(25, 31, 38, 0.96);
@@ -113,7 +113,7 @@ html, body, #root {
 
 .ifc-console-log__item {
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) repeat(3, minmax(82px, auto));
+  grid-template-columns: minmax(210px, 1fr) minmax(120px, auto) repeat(3, minmax(82px, auto));
   gap: 10px;
   align-items: center;
 }
