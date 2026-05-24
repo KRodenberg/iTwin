@@ -72,7 +72,7 @@ The machine running `docker-compose.ghcr.yml` needs these values in its local `.
 CLOUDFLARED_TOKEN=your-cloudflare-token
 IMJS_AUTH_CLIENT_CLIENT_ID=your-itwin-client-id
 IMJS_AUTH_CLIENT_REDIRECT_URI=https://itwin.geopointstudio.com/signin-callback
-IMJS_AUTH_CLIENT_LOGOUT_URI=https://itwin.geopointstudio.com/
+IMJS_AUTH_CLIENT_LOGOUT_URI=https://itwin.geopointstudio.com
 IMJS_AUTH_CLIENT_SCOPES=itwin-platform
 IMJS_AUTH_AUTHORITY=https://ims.bentley.com
 IMJS_ITWIN_ID=your-itwin-id
