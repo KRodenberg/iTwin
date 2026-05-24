@@ -2,7 +2,7 @@
 * Copyright (c) Bentley Systems, Incorporated. All rights reserved.
 * See LICENSE.md in the project root for license terms and full copyright notice.
 *--------------------------------------------------------------------------------------------*/
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Viewer, ViewerContentToolsProvider, ViewerNavigationToolsProvider, ViewerStatusbarItemsProvider } from "@itwin/web-viewer-react";
 import { IModelApp } from "@itwin/core-frontend";
 import type { IModelConnection } from "@itwin/core-frontend";
@@ -52,12 +52,7 @@ function getSensorReadingLabel(entry: SensorPollQueryLogEntry): string {
   return `${entry.temperatureC.toFixed(1)} C / ${entry.humidityPercent.toFixed(0)}%`;
 }
 
-type AuthStatus = "checking" | "ready" | "failed";
-
 const ViewportFrontstageApp = () => {
-  const hasStartedSignIn = useRef(false);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
-  const [authErrorMessage, setAuthErrorMessage] = useState("");
   const [isIModelAppReady, setIsIModelAppReady] = useState(false);
   const [selectedId64, setSelectedId64] = useState(TARGET_ELEMENT_ID64);
   const [isConsoleLogOpen, setIsConsoleLogOpen] = useState(false);
@@ -134,20 +129,7 @@ const ViewportFrontstageApp = () => {
 
   /** Sign-in */
   useEffect(() => {
-    if (hasStartedSignIn.current) {
-      return;
-    }
-
-    hasStartedSignIn.current = true;
-    void authClient.signIn()
-      .then(() => {
-        setAuthStatus("ready");
-      })
-      .catch((error) => {
-        console.error("Unable to sign in to iTwin.", error);
-        setAuthErrorMessage(error instanceof Error ? error.message : String(error));
-        setAuthStatus("failed");
-      });
+    void authClient.signIn();
   }, []);
 
   const onIModelAppInit = useCallback(async () => {
@@ -184,19 +166,6 @@ const ViewportFrontstageApp = () => {
   }, []);
 
   /** The sample's render method */
-  if (authStatus === "checking") {
-    return <div className="ifc-auth-status">Signing in...</div>;
-  }
-
-  if (authStatus === "failed") {
-    return (
-      <div className="ifc-auth-status" role="alert">
-        <strong>Unable to sign in.</strong>
-        <span>{authErrorMessage}</span>
-      </div>
-    );
-  }
-
   return <>
     <Viewer
       iTwinId={iTwinId ?? ""}

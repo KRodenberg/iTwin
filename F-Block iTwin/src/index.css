@@ -6,18 +6,6 @@ html, body, #root {
   padding: 0;
 }
 
-.ifc-auth-status {
-  min-height: 100%;
-  display: grid;
-  place-content: center;
-  gap: 8px;
-  padding: 24px;
-  color: #f4f7fb;
-  background: #161b22;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  text-align: center;
-}
-
 .ifc-status-overlays {
   position: fixed;
   left: 12px;
