@@ -55,5 +55,16 @@ jobs:
           context: ./F-Block iTwin
           file: ./F-Block iTwin/Dockerfile
           push: true
+          build-args: |
+            IMJS_AUTH_CLIENT_CLIENT_ID=${{ secrets.IMJS_AUTH_CLIENT_CLIENT_ID || vars.IMJS_AUTH_CLIENT_CLIENT_ID }}
+            IMJS_AUTH_CLIENT_REDIRECT_URI=${{ secrets.IMJS_AUTH_CLIENT_REDIRECT_URI || vars.IMJS_AUTH_CLIENT_REDIRECT_URI }}
+            IMJS_AUTH_CLIENT_LOGOUT_URI=${{ secrets.IMJS_AUTH_CLIENT_LOGOUT_URI || vars.IMJS_AUTH_CLIENT_LOGOUT_URI }}
+            IMJS_AUTH_CLIENT_SCOPES=${{ secrets.IMJS_AUTH_CLIENT_SCOPES || vars.IMJS_AUTH_CLIENT_SCOPES }}
+            IMJS_AUTH_AUTHORITY=${{ secrets.IMJS_AUTH_AUTHORITY || vars.IMJS_AUTH_AUTHORITY }}
+            IMJS_ITWIN_ID=${{ secrets.IMJS_ITWIN_ID || vars.IMJS_ITWIN_ID }}
+            IMJS_IMODEL_ID=${{ secrets.IMJS_IMODEL_ID || vars.IMJS_IMODEL_ID }}
+            IMJS_BING_MAPS_KEY=${{ secrets.IMJS_BING_MAPS_KEY || vars.IMJS_BING_MAPS_KEY }}
+            IMJS_MAP_BOX_KEY=${{ secrets.IMJS_MAP_BOX_KEY || vars.IMJS_MAP_BOX_KEY }}
+            IMJS_CESIUM_ION_KEY=${{ secrets.IMJS_CESIUM_ION_KEY || vars.IMJS_CESIUM_ION_KEY }}
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}

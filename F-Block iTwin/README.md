@@ -5,9 +5,30 @@ In the project directory, you can run:
 
 ### `npm start`
 
+# Environment Files
+
+Do not commit `.env` or `.env.production`. Use `.env.example` for local development and `.env.production.example` as the production template.
+
+For production GitHub Actions builds, add these values as repository secrets or repository variables:
+
+```text
+IMJS_AUTH_CLIENT_CLIENT_ID
+IMJS_AUTH_CLIENT_REDIRECT_URI
+IMJS_AUTH_CLIENT_LOGOUT_URI
+IMJS_AUTH_CLIENT_SCOPES
+IMJS_AUTH_AUTHORITY
+IMJS_ITWIN_ID
+IMJS_IMODEL_ID
+IMJS_BING_MAPS_KEY
+IMJS_MAP_BOX_KEY
+IMJS_CESIUM_ION_KEY
+```
+
+The production redirect URI should be `https://itwinapp.geopointstudio.com/signin-callback`.
+
 # Docker
 
-The production build uses `.env.production`, which points auth callbacks at `https://itwinapp.geopointstudio.com/signin-callback`. The Docker image serves the React build from nginx and proxies `/api/poll` to `https://rasppi.geopointstudio.com/poll`.
+The Docker image serves the React build from nginx and proxies `/api/poll` to `https://rasppi.geopointstudio.com/poll`. Docker builds receive the iTwin configuration through build args, not committed env files.
 
 Build the production image:
 
@@ -28,7 +49,7 @@ CLOUDFLARED_TOKEN="your-token" \
 sudo docker compose up -d --build
 ```
 
-The app is served locally at `http://localhost:3000`. If the Cloudflare tunnel is configured in the Cloudflare dashboard, set its service URL to `http://itwin-app:80` so it can reach the app on the Compose network.
+For local Compose builds, copy `.env.example` to `.env` and fill in the real values first. The app is served locally at `http://localhost:3000`. If the Cloudflare tunnel is configured in the Cloudflare dashboard, set its service URL to `http://itwin-app:80` so it can reach the app on the Compose network.
 
 ## GitHub Container Registry
 
